@@ -24,21 +24,41 @@ docker logs -f hx-hermes
 
 ## Выбор модели и провайдера
 
-Задаётся **не** через `.env`, а в `hermes-data/config.yaml` — этот файл перекрывает
-переменные окружения:
+Настроены два провайдера, ключи обоих лежат в `.env` одновременно — переключение
+не требует их менять.
+
+```bash
+./switch-model.sh deepseek           # deepseek-v4-pro
+./switch-model.sh kimi               # kimi-k3
+./switch-model.sh kimi kimi-k2.6     # конкретная модель
+./switch-model.sh status             # что активно сейчас и какие ключи видны
+```
+
+| провайдер | модели | ключ в `.env` |
+|---|---|---|
+| `deepseek` | `deepseek-v4-pro`, `deepseek-v4-flash` | `DEEPSEEK_API_KEY` |
+| `kimi` | `kimi-k3` (1M контекст), `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`, `kimi-k2.6` | `KIMI_API_KEY` |
+
+Для Kimi обязателен `KIMI_BASE_URL=https://api.moonshot.ai/v1`: по умолчанию hermes
+идёт на `api.moonshot.cn`, а китайский эндпоинт доступен не отовсюду.
+
+Под капотом скрипт делает три `hermes config set` и `restart`. Вручную то же самое:
 
 ```yaml
+# hermes-data/config.yaml — перекрывает переменные окружения
 model:
   default: deepseek-v4-pro
   provider: deepseek
   base_url: https://api.deepseek.com/v1
 ```
 
-Доступные модели DeepSeek: `deepseek-v4-pro`, `deepseek-v4-flash`.
-
 Имя переменной с ключом должно соответствовать провайдеру: при `provider: deepseek`
-читается `DEEPSEEK_API_KEY`. Файл принадлежит uid 10000, правится через `sudo`.
-`config.yaml` перечитывается при каждом старте, так что достаточно `restart`.
+читается `DEEPSEEK_API_KEY`, при `provider: kimi` — `KIMI_API_KEY`. Файл принадлежит
+uid 10000, правится через `sudo`. `config.yaml` перечитывается при каждом старте,
+так что достаточно `restart`.
+
+Все модели обоих провайдеров — **reasoning**: часть токенов уходит на размышление
+до ответа. При маленьком `max_tokens` ответ придёт пустым с `finish_reason: length`.
 
 ## Особенности конфигурации
 
