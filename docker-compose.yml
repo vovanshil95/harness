@@ -1,0 +1,21 @@
+services:
+  # Прямое подключение, без прокси и туннеля.
+  # DNS отдаёт для api.telegram.org адрес 149.154.166.110, который с этого
+  # сервера мёртв (таймаут 12 с). Живой адрес того же Bot API — 149.154.167.220,
+  # отвечает HTTP 302 за 0.19 с. Прибиваем его через extra_hosts, чтобы hermes
+  # не уходил в DoH-перебор при неудачном резолве.
+  hermes:
+    image: nousresearch/hermes-agent:latest
+    container_name: hx-hermes
+    command: gateway run
+    restart: on-failure:3
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+    env_file:
+      - .env
+    volumes:
+      - ./hermes-data:/opt/data
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    pids_limit: 512
+    cpus: 1.5
