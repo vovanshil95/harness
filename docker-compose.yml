@@ -58,6 +58,58 @@ services:
     pids_limit: 128
     cpus: 0.5
 
+  # ── Второй пользователь ──────────────────────────────────────────────────
+  # Отдельный бот и отдельный контейнер. Один токен нельзя опрашивать двумя
+  # процессами (Telegram отдаёт 409), а изоляция волтов достигается тем, что
+  # чужой каталог сюда просто не примонтирован.
+
+  hermes2:
+    image: nousresearch/hermes-agent:latest
+    container_name: hx-hermes2
+    command: gateway run
+    restart: on-failure:3
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - HERMES_UID=1000
+      - HERMES_GID=1000
+      # Переопределяют одноимённые значения из .env (environment важнее env_file)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN2}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS2}
+    env_file:
+      - .env
+    volumes:
+      - ./hermes2-data:/opt/data
+      - ./webdav2-data:/opt/data/vault
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    pids_limit: 512
+    cpus: 1.5
+
+  webdav2:
+    image: dgraziotin/nginx-webdav-nononsense:latest
+    container_name: hx-webdav2
+    restart: on-failure:3
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+      - WEBDAV_USERNAME=${WEBDAV2_USERNAME}
+      - WEBDAV_PASSWORD=${WEBDAV2_PASSWORD}
+    volumes:
+      - ./webdav2-data:/data
+      - ./webdav2-config:/config
+    ports:
+      - "127.0.0.1:8083:80"
+    networks:
+      - default
+      - infra_net
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+
 networks:
   infra_net:
     external: true
