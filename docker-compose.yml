@@ -11,6 +11,15 @@ services:
     restart: on-failure:3
     extra_hosts:
       - "api.telegram.org:149.154.167.220"
+    environment:
+      # nginx создаёт заметки от uid 1000 и с правами 600, а образ hermes
+      # по умолчанию работает от 10000 — в такие файлы он не попадает.
+      # Права поменять не удалось (UMASK образ игнорирует), поэтому
+      # выравниваем владельца: образ ремапит пользователя на старте.
+      - PUID=1000
+      - PGID=1000
+      - HERMES_UID=1000
+      - HERMES_GID=1000
     env_file:
       - .env
     volumes:
