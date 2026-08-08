@@ -6,7 +6,10 @@ services:
   # не уходил в DoH-перебор при неудачном резолве.
   hermes:
     image: nousresearch/hermes-agent:latest
-    container_name: hx-hermes
+    # ВРЕМЕННО hx-hermes-v2: старый контейнер hx-hermes завис так, что docker
+    # держит устаревшую запись о нём и не отдаёт имя. Вернуть на hx-hermes
+    # после ближайшей перезагрузки сервера, когда фантом исчезнет.
+    container_name: hx-hermes-v2
     command: gateway run
     restart: on-failure:3
     extra_hosts:
@@ -24,10 +27,10 @@ services:
       - .env
     volumes:
       - ./hermes-data:/opt/data
-      # Хранилище Obsidian, то же, что отдаёт WebDAV. Внутри /opt/data,
-      # потому что HERMES_WRITE_SAFE_ROOT=/opt/data — вне его агент не пишет.
-      # Для доступа только на чтение добавить :ro в конце строки.
-      - ./webdav-data/me:/opt/data/vault
+      # Живое хранилище Obsidian: его наполняет LiveSync через контейнер
+      # obsidian. Внутри /opt/data, потому что HERMES_WRITE_SAFE_ROOT=/opt/data
+      # — вне его агент не пишет. Для доступа только на чтение добавить :ro.
+      - ./vault/me:/opt/data/vault
     mem_limit: 1536m
     memswap_limit: 1536m
     pids_limit: 512
@@ -109,6 +112,50 @@ services:
     mem_limit: 256m
     pids_limit: 128
     cpus: 0.5
+
+  # ── Obsidian LiveSync ─────────────────────────────────────────────
+  # CouchDB — хранилище синхронизации. Obsidian на сервере — полноценный
+  # клиент с тем же плагином: он раскладывает волт обычными .md на диск,
+  # чтобы Hermes читал файлы напрямую, а не документы из базы.
+
+  couchdb:
+    image: couchdb:3
+    container_name: hx-couchdb
+    restart: on-failure:3
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+    volumes:
+      - ./couchdb-data:/opt/couchdb/data
+      - ./couchdb-config/local.ini:/opt/couchdb/etc/local.d/local.ini:ro
+    ports:
+      - "127.0.0.1:5984:5984"
+    networks:
+      - default
+      - infra_net
+    mem_limit: 1g
+    pids_limit: 256
+    cpus: 1.0
+
+  obsidian:
+    image: linuxserver/obsidian:latest
+    container_name: hx-obsidian
+    restart: on-failure:3
+    security_opt:
+      - seccomp:unconfined          # требуется Electron в контейнере
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+    volumes:
+      - ./obsidian-config:/config
+      - ./vault:/vaults              # сюда LiveSync кладёт .md, их читает Hermes
+    ports:
+      - "127.0.0.1:3010:3000"        # веб-интерфейс только через ssh-туннель
+    shm_size: 1gb
+    mem_limit: 2g
+    pids_limit: 512
+    cpus: 2.0
 
 networks:
   infra_net:
