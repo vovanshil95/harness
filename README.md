@@ -8,7 +8,7 @@ Telegram-бот на базе [Hermes Agent](https://github.com/NousResearch/her
 ```bash
 cp .env.example .env      # подставить реальные токены
 docker compose up -d
-docker logs -f hx-hermes
+docker logs -f hx-hermes-v2
 ```
 
 ## Команды
@@ -17,7 +17,7 @@ docker logs -f hx-hermes
 |---|---|
 | запуск | `docker compose up -d` |
 | статус | `docker compose ps` |
-| логи | `docker logs -f hx-hermes` |
+| логи | `docker logs -f hx-hermes-v2` |
 | перезапуск | `docker compose restart hermes` |
 | остановка | `docker compose down` |
 | **после правки `.env`** | `docker compose up -d --force-recreate hermes` |
@@ -114,7 +114,7 @@ DNS отдаёт для `api.telegram.org` адрес `149.154.166.110`, кот�
 |---|---|
 | файловая система сервера | `~/harness/webdav-data/me/` |
 | контейнер `hx-webdav` | `/data/me/` |
-| контейнер `hx-hermes` | `/opt/data/vault/` |
+| контейнер `hx-hermes-v2` | `/opt/data/vault/` |
 | по сети (WebDAV) | `https://5-8-9-221.sslip.io/webdav/me/` |
 | Remotely Save (Server Address) | `https://5-8-9-221.sslip.io/webdav` (без `/me`) |
 
@@ -145,20 +145,34 @@ WebDAV выведен в caddy **мимо** oauth2-proxy, которым зак�
 `remote.unicort.ru`: Remotely Save умеет только basic auth и не проходит
 OAuth-редиректы. Доступ защищён логином и паролем самого WebDAV поверх TLS.
 
-## Два пользователя
+## Несколько пользователей
 
 Каждому — свой бот, свой контейнер агента, свой WebDAV и свой волт.
 
-| | пользователь 1 | пользователь 2 |
-|---|---|---|
-| агент | `hx-hermes` | `hx-hermes2` |
-| WebDAV | `hx-webdav` | `hx-webdav2` |
-| адрес WebDAV | `.../webdav` | `.../webdav2` |
-| каталог | `webdav-data/` | `webdav2-data/` |
-| данные агента | `hermes-data/` | `hermes2-data/` |
-| токен бота | `TELEGRAM_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN2` |
+| | пользователь 1 | пользователь 2 | пользователь 3 |
+|---|---|---|---|
+| агент | `hx-hermes-v2` | `hx-hermes2` | `hx-hermes3` |
+| WebDAV | `hx-webdav` | `hx-webdav2` | `hx-webdav3` |
+| адрес WebDAV | `.../webdav` | `.../webdav2` | `.../webdav3` |
+| каталог | `vault/me/` (LiveSync) | `webdav2-data/` | `webdav3-data/` |
+| данные агента | `hermes-data/` | `hermes2-data/` | `hermes3-data/` |
+| токен бота | `TELEGRAM_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN2` | `TELEGRAM_BOT_TOKEN3` |
 
-Переключение модели второму: `HX=2 ./switch-model.sh kimi`
+Имя контейнера первого агента — `hx-hermes-v2`, а не `hx-hermes`: старое имя
+удерживает зависший контейнер, который docker отказывается отдавать. Любая
+команда `docker inspect` или `docker stats` по нему блокируется, поэтому в
+скриптах и командах используется имя с суффиксом.
+
+Переключение модели: `HX=2 ./switch-model.sh kimi` (по умолчанию `HX=1`, есть `1..3`).
+
+Каждому новому пользователю нужны: запись в `.env` (токен, id, логин и пароль
+WebDAV), пара сервисов в `docker-compose.yml` и маршрут в Caddyfile:
+
+```
+handle_path /webdav3/* {
+        reverse_proxy hx-webdav3:80
+}
+```
 
 **Почему два бота, а не один.** Telegram позволяет опрашивать токен только одному
 процессу: второй получает `409 Conflict: terminated by other getUpdates request`.

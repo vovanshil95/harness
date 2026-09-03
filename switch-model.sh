@@ -6,15 +6,21 @@
 #   ./switch-model.sh deepseek          -> deepseek-v4-pro
 #   ./switch-model.sh status            -> текущее состояние и ключи
 #
-# Второй экземпляр: HX=2 ./switch-model.sh kimi
+# Другой экземпляр: HX=2 ./switch-model.sh kimi   (HX=1 по умолчанию, есть 1..3)
 #
 # Ключи берутся из .env: KIMI_API_KEY / DEEPSEEK_API_KEY.
 # config.yaml читается при старте, поэтому в конце нужен restart.
 set -euo pipefail
 
-# Какой экземпляр переключаем: 1 (твой) или 2 (второго пользователя)
+# Какой экземпляр переключаем. Имя контейнера первого — hx-hermes-v2, а не
+# hx-hermes: старое имя занял зависший контейнер, который docker не отдаёт.
 N="${HX:-1}"
-if [ "$N" = "2" ]; then C=hx-hermes2; SVC=hermes2; else C=hx-hermes; SVC=hermes; fi
+case "$N" in
+  1) C=hx-hermes-v2; SVC=hermes  ;;
+  2) C=hx-hermes2;   SVC=hermes2 ;;
+  3) C=hx-hermes3;   SVC=hermes3 ;;
+  *) echo "HX должен быть 1, 2 или 3 (получено: $N)" >&2; exit 1 ;;
+esac
 
 case "${1:-}" in
   kimi)

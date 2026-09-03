@@ -113,6 +113,57 @@ services:
     pids_limit: 128
     cpus: 0.5
 
+  # ── Третий пользователь ──────────────────────────────────────────────────
+  # Схема та же, что у второго: свой бот, свой контейнер, свой волт.
+  # Изоляция обеспечивается монтированием — чужой каталог сюда не подключён.
+
+  hermes3:
+    image: nousresearch/hermes-agent:latest
+    container_name: hx-hermes3
+    command: gateway run
+    restart: on-failure:3
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - HERMES_UID=1000
+      - HERMES_GID=1000
+      # Переопределяют одноимённые значения из .env (environment важнее env_file)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN3}
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS3}
+    env_file:
+      - .env
+    volumes:
+      - ./hermes3-data:/opt/data
+      - ./webdav3-data:/opt/data/vault
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    pids_limit: 512
+    cpus: 1.5
+
+  webdav3:
+    image: dgraziotin/nginx-webdav-nononsense:latest
+    container_name: hx-webdav3
+    restart: on-failure:3
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+      - WEBDAV_USERNAME=${WEBDAV3_USERNAME}
+      - WEBDAV_PASSWORD=${WEBDAV3_PASSWORD}
+    volumes:
+      - ./webdav3-data:/data
+      - ./webdav3-config:/config
+    ports:
+      - "127.0.0.1:8084:80"
+    networks:
+      - default
+      - infra_net
+    mem_limit: 256m
+    pids_limit: 128
+    cpus: 0.5
+
   # ── Obsidian LiveSync ─────────────────────────────────────────────
   # CouchDB — хранилище синхронизации. Obsidian на сервере — полноценный
   # клиент с тем же плагином: он раскладывает волт обычными .md на диск,
