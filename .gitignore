@@ -4,24 +4,22 @@
 # Данные агентов: сессии, авторизация, кеши, память.
 # Содержат auth.json и токены — в репозиторий не попадают никогда.
 hermes-data/
-hermes2-data/
-hermes3-data/
 
 # Волты пользователей и состояние сервисов — данные, а не конфигурация.
 webdav-data/
-webdav2-data/
-webdav3-data/
 webdav-config/
-webdav2-config/
-webdav3-config/
 couchdb-data/
 couchdb-config/
-obsidian-config/
 vault/
+
+# LiveSync-клиенты: локальная база PouchDB и settings.json с passphrase.
+livesync-data/
+livesync-*-data/
 
 # Прочее
 *.bak
 *.log
+*.tar.gz
 .DS_Store
 
 # Инструменты и результат добавления пользователей (содержат секреты)

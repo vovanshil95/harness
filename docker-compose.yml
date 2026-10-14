@@ -27,9 +27,9 @@ services:
       - .env
     volumes:
       - ./hermes-data:/opt/data
-      # Живое хранилище Obsidian: его наполняет LiveSync через контейнер
-      # obsidian. Внутри /opt/data, потому что HERMES_WRITE_SAFE_ROOT=/opt/data
-      # — вне его агент не пишет. Для доступа только на чтение добавить :ro.
+      # Живое хранилище Obsidian: его наполняет livesync-cli через CouchDB.
+      # Внутри /opt/data, потому что HERMES_WRITE_SAFE_ROOT=/opt/data —
+      # вне его агент не пишет. Для доступа только на чтение добавить :ro.
       - ./vault/me:/opt/data/vault
     mem_limit: 1536m
     memswap_limit: 1536m
@@ -61,113 +61,9 @@ services:
     pids_limit: 128
     cpus: 0.5
 
-  # ── Второй пользователь ──────────────────────────────────────────────────
-  # Отдельный бот и отдельный контейнер. Один токен нельзя опрашивать двумя
-  # процессами (Telegram отдаёт 409), а изоляция волтов достигается тем, что
-  # чужой каталог сюда просто не примонтирован.
-
-  hermes2:
-    image: nousresearch/hermes-agent:latest
-    container_name: hx-hermes2
-    command: gateway run
-    restart: on-failure:3
-    extra_hosts:
-      - "api.telegram.org:149.154.167.220"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - HERMES_UID=1000
-      - HERMES_GID=1000
-      # Переопределяют одноимённые значения из .env (environment важнее env_file)
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN2}
-      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS2}
-    env_file:
-      - .env
-    volumes:
-      - ./hermes2-data:/opt/data
-      - ./webdav2-data:/opt/data/vault
-    mem_limit: 1536m
-    memswap_limit: 1536m
-    pids_limit: 512
-    cpus: 1.5
-
-  webdav2:
-    image: dgraziotin/nginx-webdav-nononsense:latest
-    container_name: hx-webdav2
-    restart: on-failure:3
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Moscow
-      - WEBDAV_USERNAME=${WEBDAV2_USERNAME}
-      - WEBDAV_PASSWORD=${WEBDAV2_PASSWORD}
-    volumes:
-      - ./webdav2-data:/data
-      - ./webdav2-config:/config
-    ports:
-      - "127.0.0.1:8083:80"
-    networks:
-      - default
-      - infra_net
-    mem_limit: 256m
-    pids_limit: 128
-    cpus: 0.5
-
-  # ── Третий пользователь ──────────────────────────────────────────────────
-  # Схема та же, что у второго: свой бот, свой контейнер, свой волт.
-  # Изоляция обеспечивается монтированием — чужой каталог сюда не подключён.
-
-  hermes3:
-    image: nousresearch/hermes-agent:latest
-    container_name: hx-hermes3
-    command: gateway run
-    restart: on-failure:3
-    extra_hosts:
-      - "api.telegram.org:149.154.167.220"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - HERMES_UID=1000
-      - HERMES_GID=1000
-      # Переопределяют одноимённые значения из .env (environment важнее env_file)
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN3}
-      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS3}
-    env_file:
-      - .env
-    volumes:
-      - ./hermes3-data:/opt/data
-      - ./webdav3-data:/opt/data/vault
-    mem_limit: 1536m
-    memswap_limit: 1536m
-    pids_limit: 512
-    cpus: 1.5
-
-  webdav3:
-    image: dgraziotin/nginx-webdav-nononsense:latest
-    container_name: hx-webdav3
-    restart: on-failure:3
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Moscow
-      - WEBDAV_USERNAME=${WEBDAV3_USERNAME}
-      - WEBDAV_PASSWORD=${WEBDAV3_PASSWORD}
-    volumes:
-      - ./webdav3-data:/data
-      - ./webdav3-config:/config
-    ports:
-      - "127.0.0.1:8084:80"
-    networks:
-      - default
-      - infra_net
-    mem_limit: 256m
-    pids_limit: 128
-    cpus: 0.5
-
-  # ── Obsidian LiveSync ─────────────────────────────────────────────
-  # CouchDB — хранилище синхронизации. Obsidian на сервере — полноценный
-  # клиент с тем же плагином: он раскладывает волт обычными .md на диск,
-  # чтобы Hermes читал файлы напрямую, а не документы из базы.
+  # ── CouchDB для LiveSync ─────────────────────────────────────────────────
+  # Единое хранилище репликации. Каждый пользователь — отдельная база
+  # (obsidian-<nick>), создаётся скриптом add-user.sh.
 
   couchdb:
     image: couchdb:3
@@ -188,25 +84,27 @@ services:
     pids_limit: 256
     cpus: 1.0
 
-  obsidian:
-    image: linuxserver/obsidian:latest
-    container_name: hx-obsidian
+  # ── LiveSync-клиент пользователя 1 ───────────────────────────────────────
+  # Headless-клиент Self-hosted LiveSync: тянет заметки из CouchDB и раскладывает
+  # их .md на диск ./vault/me, чтобы hermes читал файлы напрямую.
+  # Другие пользователи добавляются скриптом add-user.sh (не через compose).
+
+  livesync:
+    image: livesync-cli:latest
+    container_name: hx-livesync
+    command: --vault /vault daemon
     restart: on-failure:3
-    security_opt:
-      - seccomp:unconfined          # требуется Electron в контейнере
+    user: "1000:1000"
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Moscow
+      - LIVESYNC_DB_PATH=/data
     volumes:
-      - ./obsidian-config:/config
-      - ./vault:/vaults              # сюда LiveSync кладёт .md, их читает Hermes
-    ports:
-      - "127.0.0.1:3010:3000"        # веб-интерфейс только через ssh-туннель
-    shm_size: 1gb
-    mem_limit: 2g
-    pids_limit: 512
-    cpus: 2.0
+      - ./livesync-data:/data
+      - ./vault/me:/vault
+    networks:
+      - default
+    mem_limit: 512m
+    pids_limit: 256
+    cpus: 1.0
 
 networks:
   infra_net:
