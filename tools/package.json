@@ -1,0 +1,8 @@
+{
+  "name": "harness-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@vrtmrz/livesync-commonlib": "0.1.39"
+  }
+}

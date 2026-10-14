@@ -195,28 +195,29 @@ SSH в обход схемы. Изоляция защищает от ошибо�
 ## Синхронизация Obsidian (LiveSync)
 
 Волт синхронизируется через **Self-hosted LiveSync**: устройства реплицируются
-с CouchDB, а контейнер `obsidian` — полноценный клиент с тем же плагином, который
-раскладывает волт обычными `.md` на диск, чтобы Hermes читал файлы напрямую.
+с CouchDB. На сервере за каждого пользователя отвечает контейнер
+**`livesync-cli`** — headless-версия движка LiveSync (без Electron и Xvfb),
+который раскладывает волт обычными `.md` на диск, чтобы Hermes читал файлы
+напрямую.
 
 ```
 телефон ──┐
-          ├──► CouchDB ◄──► Obsidian (Electron+Xvfb) ──► ./vault/me ──► Hermes
+          ├──► CouchDB ◄──► livesync-cli (headless) ──► ./vault-<nick> ──► Hermes
 ноут   ───┘
 ```
 
 | сервис | что делает |
 |---|---|
 | `couchdb` | хранилище репликации, `https://couchdb.5-8-9-221.sslip.io` |
-| `obsidian` | клиент LiveSync, материализует волт в `./vault/me` |
+| `livesync-cli` | headless-клиент LiveSync, материализует волт в `./vault-<nick>` |
 
-Настройки плагина (`.obsidian/plugins/obsidian-livesync/data.json`) задаются
-открытым текстом; при первом запуске плагин их **шифрует** в
-`encryptedCouchDBConnection` и обнуляет исходные поля. Скопировать `data.json`
-на другое устройство поэтому нельзя — значения вписываются заново.
+Один пользователь = одна база CouchDB + один контейнер `hx-livesync-<nick>` +
+один волт `vault-<nick>`. E2E-шифрование у каждого своё (свой passphrase), базы
+физически разделены, волт монтируется только в нужного Hermes.
 
-Ключ расшифровки лежит в `Local Storage` Electron. Если чистить состояние
-плагина, удалять только `IndexedDB`: снос `Local Storage` лишает плагин доступа
-к собственным настройкам.
+Раньше серверным клиентом был контейнер `obsidian` (Electron+Xvfb, ~2 ГБ RAM).
+Он заменён на `livesync-cli` (~сотни МБ) — тот же протокол LiveSync, но без
+графической оболочки.
 
 ### Почему не WebDAV
 
@@ -224,6 +225,48 @@ SSH в обход схемы. Изоляция защищает от ошибо�
 изменённые блоки, а не файлы целиком, разрешает конфликты по дереву ревизий
 и доставляет правки за секунды через `_changes?feed=continuous` — открытый
 HTTP-запрос, в который сервер дописывает события.
+
+## Добавление пользователя (одной командой)
+
+Нового пользователя LiveSync добавляет скрипт `add-user.sh`. Вход — английский
+nick, выход — passphrase и setup-URI, которые отдаются пользователю.
+
+```bash
+cd ~/repos/harness
+./add-user.sh alice
+```
+
+Скрипт делает всё сам:
+
+1. генерирует случайный passphrase (E2E-шифрование волта);
+2. на сервере создаёт базу `obsidian-<nick>`, волт `vault-<nick>`, каталог
+   данных `livesync-<nick>-data` и контейнер `hx-livesync-<nick>` (uid 1000,
+   лимиты 512 МБ / 1 CPU);
+3. локально генерирует setup-URI и кладёт его в буфер обмена (резерв —
+   `users/<nick>.txt`).
+
+Пользователю отдаётся **URI + passphrase**. В Obsidian он выбирает
+*Setup wizard → Use setup URI*, вставляет строку и вводит passphrase — больше
+ничего настраивать не нужно (E2E, база, папка подключены автоматически).
+
+Требования:
+
+- образ `livesync-cli` должен быть собран на сервере (см. сборку ниже);
+- библиотека для генерации URI стоит в `tools/node_modules` (один раз
+  `cd tools && npm ci`).
+
+Каталоги `tools/node_modules/` и `users/` в git не попадают: в них секреты и
+сборочный мусор.
+
+### Сборка образа `livesync-cli`
+
+Образа на Docker Hub нет, собирается из исходников
+([obsidian-livesync](https://github.com/vrtmrz/obsidian-livesync)):
+
+```bash
+git clone --depth 1 https://github.com/vrtmrz/obsidian-livesync.git /tmp/ls
+cd /tmp/ls && docker build -f src/apps/cli/Dockerfile -t livesync-cli .
+```
 
 ## Деплой
 
