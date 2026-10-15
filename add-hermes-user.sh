@@ -66,8 +66,19 @@ hermes_set model.provider deepseek
 hermes_set model.default deepseek-v4-flash
 hermes_set model.base_url https://api.deepseek.com/v1
 hermes_set mcp_servers.gcal.command npx
-hermes_set 'mcp_servers.gcal.args' '["-y","mcp-google-calendar"]'
-hermes_set 'mcp_servers.gcal.env' '{"CREDENTIALS_PATH":"/opt/data/gcal/credentials.json"}'
+# args/env — списки/словари, а `config set` хранит значения только строками.
+# Поэтому gcal.args и gcal.env прописываем в config.yaml напрямую (правильный YAML).
+docker exec "$CONTAINER" /opt/hermes/.venv/bin/python -c '
+import re
+p = "/opt/data/config.yaml"
+s = open(p).read()
+s = re.sub(r"args: \x27\[.*?\]\x27", "args:\n      - -y\n      - mcp-google-calendar", s)
+s = re.sub(r"env: \x27\{.*?\}\x27", "env:\n      CREDENTIALS_PATH: /opt/data/gcal/credentials.json", s)
+if "timeout: 120" not in s:
+    s = s.replace("      - mcp-google-calendar", "      - mcp-google-calendar\n    timeout: 120")
+open(p, "w").write(s)
+print("gcal args/env -> YAML")
+'
 docker restart "$CONTAINER" >/dev/null
 echo "OK: модель deepseek-v4-flash + MCP gcal настроены, контейнер перезапущен"
 REMOTE
